@@ -2,8 +2,10 @@
 .vscode
 managed_components
 dependencies.lock
+sdkconfig.defaults
 sdkconfig.old
 sdkconfig
 out
 __*
 .cache
+.clangd

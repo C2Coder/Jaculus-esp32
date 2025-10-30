@@ -1,52 +1,54 @@
+#include <jac/features/basicStreamFeature.h>
+#include <jac/features/eventLoopFeature.h>
+#include <jac/features/filesystemFeature.h>
+#include <jac/features/moduleLoaderFeature.h>
+#include <jac/features/stdioFeature.h>
+#include <jac/features/timersFeature.h>
 #include <jac/machine/machine.h>
 #include <jac/machine/values.h>
-#include <jac/features/eventLoopFeature.h>
-#include <jac/features/timersFeature.h>
-#include <jac/features/moduleLoaderFeature.h>
-#include <jac/features/filesystemFeature.h>
-#include <jac/features/basicStreamFeature.h>
-#include <jac/features/stdioFeature.h>
 
 #include <jac/device/device.h>
 #include <jac/device/logger.h>
 #include <jac/features/keyvalueFeature.h>
 #include <jac/features/util/linkIo.h>
 
-#include <jac/link/mux.h>
 #include <jac/link/encoders/cobs.h>
+#include <jac/link/mux.h>
 
-#include "espFeatures/smartLedFeature.h"
-#include "espFeatures/gpioFeature.h"
-#include "espFeatures/freeRTOSEventQueue.h"
-#include "espFeatures/ledcFeature.h"
 #include "espFeatures/adcFeature.h"
-#include "espFeatures/i2cFeature.h"
-#include "espFeatures/simpleRadioFeature.h"
 #include "espFeatures/extendLifetimeFeature.h"
+#include "espFeatures/freeRTOSEventQueue.h"
+#include "espFeatures/gpioFeature.h"
+#include "espFeatures/gridui/gridUiFeature.h"
+#include "espFeatures/i2cFeature.h"
+#include "espFeatures/ledcFeature.h"
+#include "espFeatures/motorFeature.h"
 #include "espFeatures/pulseCounterFeature.h"
+#include "espFeatures/selectFeature.h"
+#include "espFeatures/simpleRadioFeature.h"
+#include "espFeatures/smartLedFeature.h"
 #include "espFeatures/timestampFeature.h"
+#include "espFeatures/udpSocketFeature.h"
 #include "espFeatures/wifiFeature.h"
 #include "espFeatures/httpClientFeature.h"
-#include "espFeatures/gridui/gridUiFeature.h"
-#include "espFeatures/motorFeature.h"
 
 #include "platform/espNvsKeyValue.h"
 #include "platform/espWifi.h"
 
-#include "util/uartStream.h"
 #include "util/tcpStream.h"
+#include "util/uartStream.h"
 
 #include "resources/resources.h"
 
-#include <string>
 #include <filesystem>
 #include <sstream>
-
-#include "esp_vfs_fat.h"
-#include "nvs_flash.h"
-#include "freertos/task.h"
+#include <string>
 
 #include "esp_pthread.h"
+#include "esp_vfs_fat.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "nvs_flash.h"
 
 
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
@@ -70,9 +72,9 @@ using Machine = jac::ComposeMachine<
     jac::BasicStreamFeature,
     jac::StdioFeature,
     PlatformInfoFeature,
+    jac::EventLoopFeature,
     jac::FilesystemFeature,
     jac::ModuleLoaderFeature,
-    jac::EventLoopFeature,
     jac::TimersFeature,
     TimestampFeature,
     ExtendLifetimeFeature,
@@ -88,6 +90,8 @@ using Machine = jac::ComposeMachine<
     HttpClientFeature,
     GridUiFeature,
     jac::KeyValueFeature,
+    SelectFeature,
+    UdpSocketFeature,
     jac::EventLoopTerminal
 >;
 
@@ -95,7 +99,8 @@ jac::Device<Machine> device(
     "/data",
     []() { // get memory stats
         std::stringstream oss;
-        oss << esp_get_free_heap_size() << "/" << esp_get_minimum_free_heap_size();
+        oss << esp_get_free_heap_size() << "; min " << esp_get_minimum_free_heap_size()
+            << "\nIRAM " << heap_caps_get_free_size(MALLOC_CAP_INTERNAL) << "; IRAM min " << heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
         return oss.str();
     },
     []() { // get storage stats
@@ -225,6 +230,7 @@ int main() {
         machine.stdio.in = std::make_unique<jac::LinkReadable<Machine>>(&machine, device.machineIO().in.get());
 
         machine.kvOpener = device.getKeyValueOpener();
+        machine.setMallocFunctions(&JsEspMallocFunctions<MALLOC_CAP_DEFAULT>::js_esp_malloc_functions);
 
         esp_pthread_cfg_t cfg = esp_pthread_get_default_config();
         cfg.stack_size = 2 * 1024;

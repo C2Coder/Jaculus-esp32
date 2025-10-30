@@ -9,7 +9,6 @@
 template<class Next>
 class WifiFeature : public Next {
 public:
-
     void initialize() {
         Next::initialize();
 
@@ -20,9 +19,18 @@ public:
             auto& wifi = EspWifiController::get();
             if(wifi.currentIp().addr == 0) {
                 return jac::Value::null(this->context());
-            } else {
+            }
+            else {
                 return jac::Value::from(this->context(), wifi.currentIpStr());
             }
+        })));
+
+        module.addExport("listNetworks", ff.newFunction(noal::function([this]() {
+            auto nsHandle = EspNvsKeyValue::open("wifi_net");
+            if(!nsHandle) {
+                throw jac::Exception::create(jac::Exception::Type::InternalError, "failed to open namespace");
+            }
+            return nsHandle->keys();
         })));
 
         module.addExport("waitForIp", ff.newFunctionVariadic([this](std::vector<jac::ValueWeak> args) {

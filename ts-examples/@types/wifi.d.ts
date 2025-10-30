@@ -5,6 +5,11 @@ declare module "wifi" {
     function currentIp(): string | null;
 
     /**
+    * List all saved WiFi networks.
+    */
+    function listNetworks(): string[];
+
+    /**
      * Waits for the device to obtain an IP address.
      * @param timeoutMs Optional timeout in milliseconds. If not provided, waits indefinitely.
      * @returns A promise that resolves to true if an IP address is obtained, or false if the timeout is reached.

@@ -1,10 +1,12 @@
 #include <thread>
 
-#include "esp_wifi.h"
 #include "esp_netif.h"
+#include "esp_wifi.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "espWifi.h"
+
 
 EspWifiController::EspWifiController() :
         _mode(Mode::DISABLED),
@@ -19,7 +21,7 @@ EspWifiController::EspWifiController() :
 {
     esp_timer_create_args_t args;
     args.callback = onKvModifiedTimer;
-    args.arg = (void*)this;
+    args.arg = static_cast<void*>(this);
     args.dispatch_method = ESP_TIMER_TASK;
 
     auto err = esp_timer_create(&args, &_kvModifyTimer);
@@ -34,11 +36,11 @@ bool EspWifiController::initialize() {
         return false;
     }
 
-    _staMode = (StaMode)kvMain->getInt(KeyWifiStaMode, StaMode::BEST_SIGNAL);
+    _staMode = static_cast<StaMode>(kvMain->getInt(KeyWifiStaMode, StaMode::BEST_SIGNAL));
 
     _apFallback = kvMain->getInt(KeyWifiStaApFallback, 1) != 0;
 
-    return switchMode((Mode)kvMain->getInt(KeyWifiMode, Mode::DISABLED), std::move(kvMain));
+    return switchMode(static_cast<Mode>(kvMain->getInt(KeyWifiMode, Mode::DISABLED)), std::move(kvMain));
 }
 
 bool EspWifiController::initGlobalsLocked() {
@@ -79,7 +81,7 @@ bool EspWifiController::registerEventHandlersLocked() {
     auto err = esp_event_handler_instance_register(WIFI_EVENT,
             ESP_EVENT_ANY_ID,
             &EspWifiController::eventHandlerWifi,
-            (void*)this,
+            static_cast<void*>(this),
             &_handler_wifi);
     if(err != ESP_OK) {
         jac::Logger::error("esp_event_handler_instance_register(WIFI_EVENT): " + std::string(esp_err_to_name(err)));
@@ -120,7 +122,7 @@ void EspWifiController::stopWifiLocked() {
     esp_event_handler_instance_register(WIFI_EVENT,
             ESP_EVENT_ANY_ID,
             &EspWifiController::eventHandlerWifiStop,
-            (void*)stopSem,
+            static_cast<void*>(stopSem),
             &handler);
 
     if(esp_wifi_stop() == ESP_OK) {
@@ -166,7 +168,7 @@ void EspWifiController::onKeyValueModified(const std::string& nsname, const std:
 }
 
 void EspWifiController::onKvModifiedTimer(void *selfVoid) {
-    auto *self = (EspWifiController*)selfVoid;
+    auto *self = static_cast<EspWifiController*>(selfVoid);
 
     jac::Logger::debug("Reloading WiFi settings from NVS");
 
@@ -205,7 +207,8 @@ bool EspWifiController::switchMode(Mode newMode, std::unique_ptr<jac::KeyValueNa
         if(!initGlobalsLocked()) {
             return false;
         }
-    } else {
+    }
+    else {
         // stop previous mode
         stopWifiLocked();
     }
@@ -236,8 +239,8 @@ bool EspWifiController::switchMode(Mode newMode, std::unique_ptr<jac::KeyValueNa
             }
 
             auto spec_ssid = mainNs->getString(KeyWifiStaSpecific);
-            snprintf((char*)cfg.sta.ssid, 32, "%s", spec_ssid.c_str());
-            snprintf((char*)cfg.sta.password, 64, "%s", wifiNs->getString(spec_ssid).c_str());
+            snprintf(reinterpret_cast<char*>(cfg.sta.ssid), 32, "%s", spec_ssid.c_str());  // NOLINT
+            snprintf(reinterpret_cast<char*>(cfg.sta.password), 64, "%s", wifiNs->getString(spec_ssid).c_str());  // NOLINT
         }
 
         err = esp_wifi_set_config(WIFI_IF_STA, &cfg);
@@ -265,15 +268,16 @@ bool EspWifiController::switchMode(Mode newMode, std::unique_ptr<jac::KeyValueNa
 
         wifi_config_t cfg = {};
         if (pass.size() >= 8) {
-            snprintf((char*)cfg.ap.password, 64, "%s", pass.c_str());
+            snprintf(reinterpret_cast<char*>(cfg.ap.password), 64, "%s", pass.c_str());  // NOLINT
             cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
-        } else {
+        }
+        else {
             if(pass.size() != 0) {
                 jac::Logger::error("The WiFi password is too short, 8 characters required, leaving the WiFI open!");
             }
             cfg.ap.authmode = WIFI_AUTH_OPEN;
         }
-        snprintf((char*)cfg.ap.ssid, 32, "%s", ssid.c_str());
+        snprintf(reinterpret_cast<char*>(cfg.ap.ssid), 32, "%s", ssid.c_str());  // NOLINT
         cfg.ap.beacon_interval = 400;
         cfg.ap.max_connection = 4;
 
@@ -299,7 +303,7 @@ bool EspWifiController::switchMode(Mode newMode, std::unique_ptr<jac::KeyValueNa
 
 void EspWifiController::eventHandlerWifi(void* selfVoid, esp_event_base_t event_base,
         int32_t event_id, void* event_data) {
-    auto *self = (EspWifiController*)selfVoid;
+    auto *self = static_cast<EspWifiController*>(selfVoid);
 
     switch(event_id) {
         case WIFI_EVENT_STA_START:
@@ -315,7 +319,8 @@ void EspWifiController::eventHandlerWifi(void* selfVoid, esp_event_base_t event_
                 if(err != ESP_OK) {
                     jac::Logger::error("esp_wifi_connect: " + std::string(esp_err_to_name(err)));
                 }
-            } else if(self->_staMode == StaMode::BEST_SIGNAL) {
+            }
+            else if(self->_staMode == StaMode::BEST_SIGNAL) {
                 auto err = esp_wifi_scan_start(NULL, false);
                 if(err != ESP_OK) {
                     jac::Logger::error("esp_wifi_scan_start: " + std::string(esp_err_to_name(err)));
@@ -355,14 +360,14 @@ void EspWifiController::eventHandlerWifi(void* selfVoid, esp_event_base_t event_
 
                 // kv key len limits us, use prefix match
                 rec.ssid[15] = 0;
-                auto pass = wifiNs->getString((const char*)rec.ssid, not_exists_sentinel);
+                auto pass = wifiNs->getString(reinterpret_cast<const char*>(rec.ssid), not_exists_sentinel);  // NOLINT
                 if(pass == not_exists_sentinel) {
                     continue;
                 }
 
                 wifi_config_t cfg = {};
-                snprintf((char*)cfg.sta.ssid, 32, "%.31s", (const char*)rec.ssid);
-                snprintf((char*)cfg.sta.password, 64, "%s", pass.c_str());
+                snprintf(reinterpret_cast<char*>(cfg.sta.ssid), 32, "%.31s", reinterpret_cast<const char*>(rec.ssid));  // NOLINT
+                snprintf(reinterpret_cast<char*>(cfg.sta.password), 64, "%s", pass.c_str());  // NOLINT
                 err = esp_wifi_set_config(WIFI_IF_STA, &cfg);
                 if(err != ESP_OK) {
                     jac::Logger::error("esp_wifi_set_config: " + std::string(esp_err_to_name(err)));
@@ -395,7 +400,7 @@ void EspWifiController::eventHandlerWifiStop(void* semVoid, esp_event_base_t eve
     switch(event_id) {
         case WIFI_EVENT_STA_STOP:
         case WIFI_EVENT_AP_STOP: {
-            auto *sem = (SemaphoreHandle_t)semVoid;
+            auto *sem = static_cast<SemaphoreHandle_t>(semVoid);
             xSemaphoreGive(sem);
             break;
         }
@@ -404,9 +409,9 @@ void EspWifiController::eventHandlerWifiStop(void* semVoid, esp_event_base_t eve
 
 void EspWifiController::eventHandlerIp(void* selfVoid, esp_event_base_t event_base,
         int32_t event_id, void* event_data) {
-    auto *self = (EspWifiController*)selfVoid;
+    auto *self = static_cast<EspWifiController*>(selfVoid);
 
-    ip_event_got_ip_t* event = (ip_event_got_ip_t*)event_data;
+    auto event = static_cast<ip_event_got_ip_t*>(event_data);
 
     self->_currentIp = event->ip_info.ip;
 
